@@ -1,0 +1,32 @@
+services:
+  cafe-web:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    mem_limit: 64m
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+  cafe-proxy:
+    image: traefik:v3.7
+    restart: unless-stopped
+    mem_limit: 160m
+    depends_on:
+      - cafe-web
+    ports:
+      - "80:80"
+    volumes:
+      - ./routes.yml:/etc/traefik/dynamic/routes.yml:ro
+    command:
+      - --entrypoints.web.address=:80
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --api.dashboard=false
+      - --log.level=INFO
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

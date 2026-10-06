@@ -1,0 +1,20 @@
+http:
+  routers:
+    cafe:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web
+      service: cafe
+      middlewares:
+        - headers
+  services:
+    cafe:
+      loadBalancer:
+        servers:
+          - url: "http://cafe-web:80"
+  middlewares:
+    headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "no-referrer"
