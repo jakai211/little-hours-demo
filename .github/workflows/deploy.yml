@@ -1,0 +1,90 @@
+name: Validate, build and deploy
+on:
+  push:
+    branches: [main, qa, qa-production-setup]
+  pull_request:
+    branches: [main, qa]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: portfolio-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.publish.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate source and deployment configuration
+        run: |
+          python3 scripts/validate.py
+          bash -n deploy/release.sh
+          bash -n deploy/bootstrap.sh
+          SITE_ENV=qa SITE_IMAGE=portfolio:test docker compose -f deploy/site.yaml config --quiet
+          docker compose -f deploy/proxy.yaml config --quiet
+      - name: Build the image
+        run: docker build --build-arg REVISION="$GITHUB_SHA" -t portfolio:test .
+      - name: Test the actual image over HTTP
+        run: |
+          set -euo pipefail
+          docker run -d --name portfolio-test -p 127.0.0.1:8080:80 portfolio:test
+          trap 'docker logs portfolio-test; docker rm -f portfolio-test' EXIT
+          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8080/ -o /tmp/served.html
+          cmp index.html /tmp/served.html
+          test "$(curl --fail --silent http://127.0.0.1:8080/version.txt)" = "$GITHUB_SHA"
+          docker exec portfolio-test nginx -t
+      - name: Publish tested image
+        id: publish
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/jakai211/little-hours-demo:$GITHUB_SHA"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
+          docker tag portfolio:test "$image"
+          docker push "$image"
+          docker pull "$image"
+          digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$image")"
+          echo "image=$digest" >> "$GITHUB_OUTPUT"
+  deploy:
+    needs: build
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa') &&
+      vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: ${{ github.ref_name == 'main' && 'production' || 'qa' }}
+      url: ${{ github.ref_name == 'main' && 'https://j5port.duckdns.org' || 'https://j5port-qa.duckdns.org' }}
+    steps:
+      - name: Deploy the tested digest using the verified non-root login
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          IMAGE: ${{ needs.build.outputs.image }}
+          TARGET: ${{ github.ref_name == 'main' && 'production' || 'qa' }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          [[ "$IMAGE" =~ ^ghcr.io/jakai211/little-hours-demo@sha256:[a-f0-9]{64}$ ]]
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy ~/.ssh/known_hosts
+          trap 'rm -f ~/.ssh/deploy' EXIT
+          ssh -i ~/.ssh/deploy -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            jakai@138.197.134.214 \
+            "bash /opt/portfolio/deploy/release.sh '$TARGET' '$IMAGE' '$GITHUB_SHA'"
