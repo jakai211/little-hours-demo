@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: portfolio-${{ github.ref }}
+  group: portfolio-${{ github.event_name == 'pull_request' && github.ref || 'release' }}
   cancel-in-progress: false
 jobs:
   build:
@@ -19,6 +19,7 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.publish.outputs.image }}
+      content_sha: ${{ steps.content.outputs.sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -30,6 +31,12 @@ jobs:
           bash -n deploy/bootstrap.sh
           SITE_ENV=qa SITE_IMAGE=portfolio:test docker compose -f deploy/site.yaml config --quiet
           docker compose -f deploy/proxy.yaml config --quiet
+      - name: Record expected website content
+        id: content
+        run: |
+          set -euo pipefail
+          digest="$(sha256sum index.html)"
+          echo "sha=${digest%% *}" >> "$GITHUB_OUTPUT"
       - name: Build the image
         run: docker build --build-arg REVISION="$GITHUB_SHA" -t portfolio:test .
       - name: Test the actual image over HTTP
@@ -74,12 +81,23 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
           IMAGE: ${{ needs.build.outputs.image }}
+          CONTENT_SHA: ${{ needs.build.outputs.content_sha }}
           TARGET: ${{ github.ref_name == 'main' && 'production' || 'qa' }}
         run: |
           set -euo pipefail
+          [[ "$CONTENT_SHA" =~ ^[a-f0-9]{64}$ ]]
           test -n "$SSH_PRIVATE_KEY"
           test -n "$SSH_KNOWN_HOSTS"
           [[ "$IMAGE" =~ ^ghcr.io/jakai211/little-hours-demo@sha256:[a-f0-9]{64}$ ]]
+          if [ "$TARGET" = qa ]; then
+            site=https://j5port-qa.duckdns.org
+            other=https://j5port.duckdns.org
+          else
+            site=https://j5port.duckdns.org
+            other=https://j5port-qa.duckdns.org
+          fi
+          curl -fsS --retry 3 --max-time 20 "$other/" -o /tmp/other-before.html
+          other_version="$(curl -fsS --retry 3 --max-time 20 "$other/version.txt")"
           install -d -m 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
@@ -88,3 +106,11 @@ jobs:
           ssh -i ~/.ssh/deploy -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
             jakai@138.197.134.214 \
             "bash /opt/portfolio/deploy/release.sh '$TARGET' '$IMAGE' '$GITHUB_SHA'"
+          curl -fsS --retry 3 --max-time 20 "$site/" -o /tmp/deployed.html
+          test "$(sha256sum /tmp/deployed.html | cut -d' ' -f1)" = "$CONTENT_SHA"
+          curl -fsS --retry 3 --max-time 20 "$other/" -o /tmp/other-after.html
+          cmp /tmp/other-before.html /tmp/other-after.html
+          test "$(curl -fsS --retry 3 --max-time 20 "$other/version.txt")" = "$other_version"
+          echo "PASS: $site serves the exact tested HTML."
+          echo "PASS: $other content and revision remained unchanged ($other_version)."
+          printf '### Deployment verification\n- Target: %s\n- Revision: %s\n- Exact tested HTML: passed\n- Other environment unchanged: %s (%s)\n' "$site" "$GITHUB_SHA" "$other" "$other_version" >> "$GITHUB_STEP_SUMMARY"
