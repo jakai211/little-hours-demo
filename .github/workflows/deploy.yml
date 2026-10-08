@@ -20,7 +20,7 @@ jobs:
     outputs:
       image: ${{ steps.publish.outputs.image }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Validate source and deployment configuration
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           docker run -d --name portfolio-test -p 127.0.0.1:8080:80 portfolio:test
           trap 'docker logs portfolio-test; docker rm -f portfolio-test' EXIT
-          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8080/ -o /tmp/served.html
+          curl --fail --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:8080/ -o /tmp/served.html
           cmp index.html /tmp/served.html
           test "$(curl --fail --silent http://127.0.0.1:8080/version.txt)" = "$GITHUB_SHA"
           docker exec portfolio-test nginx -t

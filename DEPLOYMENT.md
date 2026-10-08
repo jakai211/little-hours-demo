@@ -33,7 +33,7 @@ bash deploy/bootstrap.sh
 
 Bootstrap backs up `/opt/cafe` and the old container settings, builds the initial image and starts both new site containers. Only after they are healthy does it stop `cafe-proxy` and start the HTTPS proxy. It verifies trusted HTTPS on both domains and restores the old HTTP proxy if this part fails. A failed attempt leaves files/state for inspection; do not blindly rerun it.
 
-The old `cafe-web` container stays available during migration. After successful HTTPS checks, stop it to free memory: `docker stop cafe-web`. Keep it and `cafe-proxy` for rollback. Docker restart policies can restart the old proxy after a reboot; after successful migration run `docker update --restart=no cafe-web cafe-proxy` to prevent port conflicts.
+After successful HTTPS checks, bootstrap stops the old `cafe-web` container to free memory and disables automatic restart for both old containers to prevent port conflicts after reboot. Both old containers are retained for rollback.
 
 ## 2. Verify the sites
 

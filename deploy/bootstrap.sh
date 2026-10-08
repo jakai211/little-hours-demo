@@ -40,5 +40,7 @@ for domain in j5port.duckdns.org j5port-qa.duckdns.org; do
 done
 touch state/initialized
 trap - ERR
+docker stop cafe-web
+docker update --restart=no cafe-web cafe-proxy
 echo "Both HTTPS sites verified. SSH access is unchanged."
 echo "Old cafe containers and backups are retained for rollback."
