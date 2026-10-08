@@ -33,7 +33,10 @@ jobs:
           docker compose -f deploy/proxy.yaml config --quiet
       - name: Record expected website content
         id: content
-        run: echo "sha=$(sha256sum index.html | cut -d\' \' -f1)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          digest="$(sha256sum index.html)"
+          echo "sha=${digest%% *}" >> "$GITHUB_OUTPUT"
       - name: Build the image
         run: docker build --build-arg REVISION="$GITHUB_SHA" -t portfolio:test .
       - name: Test the actual image over HTTP
@@ -82,6 +85,7 @@ jobs:
           TARGET: ${{ github.ref_name == 'main' && 'production' || 'qa' }}
         run: |
           set -euo pipefail
+          [[ "$CONTENT_SHA" =~ ^[a-f0-9]{64}$ ]]
           test -n "$SSH_PRIVATE_KEY"
           test -n "$SSH_KNOWN_HOSTS"
           [[ "$IMAGE" =~ ^ghcr.io/jakai211/little-hours-demo@sha256:[a-f0-9]{64}$ ]]
