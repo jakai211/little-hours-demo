@@ -1,0 +1,23 @@
+http:
+  routers:
+    production:
+      rule: "Host(`j5port.duckdns.org`)"
+      entryPoints: [websecure]
+      service: production
+      tls:
+        certResolver: letsencrypt
+    qa:
+      rule: "Host(`j5port-qa.duckdns.org`)"
+      entryPoints: [websecure]
+      service: qa
+      tls:
+        certResolver: letsencrypt
+  services:
+    production:
+      loadBalancer:
+        servers:
+          - url: http://portfolio-production:80
+    qa:
+      loadBalancer:
+        servers:
+          - url: http://portfolio-qa:80

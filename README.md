@@ -1,40 +1,37 @@
 # Jakai F. — Personal Portfolio
 
-A responsive, dark portfolio for an Information Technology student at NJIT, graduating June 2027. Built with plain HTML and CSS; no build tools, external fonts, tracking, or database required.
+**[Production](https://j5port.duckdns.org) · [QA](https://j5port-qa.duckdns.org)**
 
-## Preview and edit
+A responsive portfolio for an Information Technology student at NJIT, graduating June 2027. Plain HTML and CSS, with no database, tracking, external fonts or frontend build tools.
 
-Open `index.html` in a browser. All content and styles are in that file.
+## Deployment status
 
-- Search for `EDIT EMAIL` to replace `your.email@example.com`. Until then, LinkedIn is the contact method.
-- Each `<article class="project">` is a featured project.
-- Update the Skills, Education, and Experience sections as your experience grows.
-- Colors are defined at the beginning of the `<style>` block.
+The repository includes the QA/production setup. Live HTTPS migration, deployment credentials and SSH verification must be completed using [DEPLOYMENT.md](DEPLOYMENT.md). Links above are the intended endpoints; a committed configuration alone does not prove they are live.
 
-Project descriptions were checked against public repository source on October 6, 2026. See `PROJECT-SOURCES.md` for evidence and selection notes. No proficiency ratings or unverified certifications are claimed.
+## Edit the portfolio
 
-## Hosting
+Open `index.html` in a browser. Content and styles are in that file.
+- Search for `EDIT EMAIL` to replace the contact placeholder. LinkedIn is the current contact method.
+- Each `article.project` is a featured project.
+- Update Skills, Education and Experience as your experience grows.
+- Colors are defined at the beginning of the style block.
 
-Server address: http://138.197.134.214/
+Project descriptions were checked against public repository source on October 6, 2026. See [PROJECT-SOURCES.md](PROJECT-SOURCES.md).
 
-Visitors → Traefik on port 80 → Nginx → `index.html`
+## QA and production
 
-The existing server is a $4/month DigitalOcean Ubuntu 24.04 Droplet in Toronto (512 MB RAM, 10 GB storage). Taxes or usage extras may apply. The site currently uses HTTP and the server's IP address; domain and HTTPS setup are separate.
+Push website changes to `qa` to validate, build, publish to GitHub Container Registry and deploy QA. Inspect QA, then approve and merge a pull request from `qa` into `main` to deploy production. Branch protection/review enforcement must be configured separately; this is the promotion policy.
 
-The repository retains its original name, `little-hours-demo`. Container names and `/opt/cafe` paths are also retained for compatibility with the original deployment.
+The workflow builds once, tests the running image, publishes it, then deploys its exact digest. Failed validation, build or smoke tests stop publishing and deployment. The deployment job remains disabled until repository variable `DEPLOY_ENABLED=true` is set after server and SSH setup.
 
-### Update the existing server
+Production and QA run as separate Compose projects with independent image state. One Traefik proxy routes their hostnames, redirects HTTP to HTTPS and persists Let's Encrypt certificates. Updating QA does not restart production or the proxy. A failed release restores that environment's previous image.
 
-Replace `/opt/cafe/html/index.html` with this repository's `index.html`, saved as UTF-8. Back up the old file first. No container restart is required.
+## Files
 
-GitHub changes do **not** automatically deploy. Never paste passwords or private keys into the repository.
+- `Dockerfile`: website image and health check.
+- `.github/workflows/deploy.yml`: validation, image build, test, registry push and SSH deployment.
+- `deploy/`: separate sites, HTTPS proxy, one-time migration and release script.
+- `scripts/validate.py`: page structure and internal-link validation.
+- [DEPLOYMENT.md](DEPLOYMENT.md): setup, rollback and evidence.
 
-### Run with Docker Compose
-
-With Docker and Compose installed, run `docker compose up -d` from this directory, then open http://localhost. Stop with `docker compose down`.
-
-### Set up a fresh Ubuntu server
-
-Copy these files onto a fresh Ubuntu 24.04 Droplet and run `sudo bash setup-server.sh`. The script installs Docker, adds swap, configures SSH/HTTP firewall rules, and starts Nginx and Traefik.
-
-Choose either the setup script or Compose. Do not run both together; both use port 80. Do not rerun the fresh-server script on the existing server.
+The original `compose.yaml`, `routes.yml` and `setup-server.sh` are legacy HTTP examples. **Do not run them on the migrated server.** The fresh-server script is not a migration script.

@@ -1,0 +1,18 @@
+services:
+  web:
+    image: ${SITE_IMAGE:?Set SITE_IMAGE}
+    restart: unless-stopped
+    mem_limit: 64m
+    networks:
+      edge:
+        aliases:
+          - portfolio-${SITE_ENV:?Set SITE_ENV}
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+networks:
+  edge:
+    external: true
+    name: portfolio-edge
